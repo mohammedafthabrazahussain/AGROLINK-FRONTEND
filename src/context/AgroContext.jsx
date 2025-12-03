@@ -1,77 +1,160 @@
 import React, { createContext, useContext, useState } from 'react';
+import axios from 'axios';
 
 const AgroContext = createContext();
 
 export const useAgro = () => useContext(AgroContext);
 
 export const AgroProvider = ({ children }) => {
-    // User State
     const [user, setUser] = useState(null);
-
-    // Product State (Initial Mock Data)
-    const [products, setProducts] = useState([
-        { id: 1, name: 'Fresh Tomatoes', price: 40, unit: 'kg', farmer: 'Rajesh Kumar', farmerId: 999, location: 'Nashik, MH', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80' },
-        { id: 2, name: 'Organic Potatoes', price: 30, unit: 'kg', farmer: 'Suresh Patil', farmerId: 888, location: 'Pune, MH', image: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?auto=format&fit=crop&w=800&q=80' },
-        { id: 3, name: 'Sweet Corn', price: 15, unit: 'pc', farmer: 'Amit Singh', farmerId: 777, location: 'Nagpur, MH', image: 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=800&q=80' },
-        { id: 4, name: 'Fresh Carrots', price: 50, unit: 'kg', farmer: 'Priya Deshmukh', farmerId: 666, location: 'Satara, MH', image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=800&q=80' },
-        { id: 5, name: 'Green Spinach', price: 20, unit: 'bunch', farmer: 'Rahul Verma', farmerId: 555, location: 'Mumbai, MH', image: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?auto=format&fit=crop&w=800&q=80' },
-        { id: 6, name: 'Red Onions', price: 35, unit: 'kg', farmer: 'Vijay Kale', farmerId: 444, location: 'Nashik, MH', image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?auto=format&fit=crop&w=800&q=80' },
-    ]);
-
-    // Cart State
+    const [products, setProducts] = useState([]);
     const [cart, setCart] = useState([]);
+
+    const API_URL = 'http://localhost:5000';
+
+    // Initial Load
+    React.useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [productsRes, cartRes] = await Promise.all([
+                    axios.get(`${API_URL}/products`),
+                    axios.get(`${API_URL}/cart`)
+                ]);
+                setProducts(productsRes.data);
+                setCart(cartRes.data);
+
+                // Check for persisted user in localStorage (optional, for session persistence)
+                const savedUser = localStorage.getItem('agro_user');
+                if (savedUser) {
+                    setUser(JSON.parse(savedUser));
+                }
+            } catch (error) {
+                console.error("Error fetching initial data:", error);
+            }
+        };
+        fetchData();
+    }, []);
 
     // Actions
     const login = (userData) => {
         setUser(userData);
+        localStorage.setItem('agro_user', JSON.stringify(userData));
+    };
+
+    const registerOrLogin = async (userData) => {
+        try {
+            // Check if user exists
+            const res = await axios.get(`${API_URL}/users?phone=${userData.phone}`);
+            const existingUser = res.data.find(u => u.type === userData.type);
+
+            if (existingUser) {
+                console.log('Logging in existing user:', existingUser);
+                login(existingUser);
+            } else {
+                // Register new user
+                const newUser = { ...userData, id: String(Date.now()) };
+                await axios.post(`${API_URL}/users`, newUser);
+                console.log('Registering new user:', newUser);
+                login(newUser);
+            }
+        } catch (error) {
+            console.error("Error in registerOrLogin:", error);
+            alert("Failed to login/register. Please check if server is running.");
+        }
     };
 
     const logout = () => {
         setUser(null);
-        setCart([]);
+        localStorage.removeItem('agro_user');
     };
 
-    const updateUser = (updatedData) => {
-        setUser(prev => ({ ...prev, ...updatedData }));
+    const updateUser = async (updatedData) => {
+        if (!user) return;
+        try {
+            const newUser = { ...user, ...updatedData };
+            await axios.put(`${API_URL}/users/${user.id}`, newUser);
+            setUser(newUser);
+            localStorage.setItem('agro_user', JSON.stringify(newUser));
+        } catch (error) {
+            console.error("Error updating user:", error);
+        }
     };
 
-    const addProduct = (product) => {
-        const newProduct = { ...product, id: Date.now() };
-        setProducts([...products, newProduct]);
+    const addProduct = async (product) => {
+        try {
+            const newProduct = { ...product, id: String(Date.now()) };
+            const res = await axios.post(`${API_URL}/products`, newProduct);
+            setProducts([...products, res.data]);
+        } catch (error) {
+            console.error("Error adding product:", error);
+        }
     };
 
-    const updateProduct = (id, updatedProduct) => {
-        setProducts(products.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
+    const updateProduct = async (id, updatedProduct) => {
+        try {
+            await axios.patch(`${API_URL}/products/${id}`, updatedProduct);
+            setProducts(products.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
+        } catch (error) {
+            console.error("Error updating product:", error);
+        }
     };
 
-    const deleteProduct = (id) => {
-        setProducts(products.filter(p => p.id !== id));
+    const deleteProduct = async (id) => {
+        try {
+            await axios.delete(`${API_URL}/products/${id}`);
+            setProducts(products.filter(p => p.id !== id));
+        } catch (error) {
+            console.error("Error deleting product:", error);
+        }
     };
 
-    const addToCart = (product) => {
-        setCart(prevCart => {
-            const existingItem = prevCart.find(item => item.id === product.id);
+    const addToCart = async (product) => {
+        try {
+            const existingItem = cart.find(item => item.id === product.id);
             if (existingItem) {
-                return prevCart.map(item =>
-                    item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-                );
+                const updatedItem = { ...existingItem, quantity: existingItem.quantity + 1 };
+                await axios.put(`${API_URL}/cart/${existingItem.id}`, updatedItem);
+                setCart(cart.map(item => item.id === product.id ? updatedItem : item));
+            } else {
+                const newItem = { ...product, quantity: 1 };
+                const res = await axios.post(`${API_URL}/cart`, newItem);
+                setCart([...cart, res.data]);
             }
-            return [...prevCart, { ...product, quantity: 1 }];
-        });
+        } catch (error) {
+            console.error("Error adding to cart:", error);
+        }
     };
 
-    const removeFromCart = (productId) => {
-        setCart(prevCart => prevCart.filter(item => item.id !== productId));
+    const removeFromCart = async (productId) => {
+        try {
+            await axios.delete(`${API_URL}/cart/${productId}`);
+            setCart(cart.filter(item => item.id !== productId));
+        } catch (error) {
+            console.error("Error removing from cart:", error);
+        }
     };
 
-    const updateCartQuantity = (productId, quantity) => {
+    const updateCartQuantity = async (productId, quantity) => {
         if (quantity < 1) return;
-        setCart(prevCart => prevCart.map(item =>
-            item.id === productId ? { ...item, quantity } : item
-        ));
+        try {
+            const item = cart.find(i => i.id === productId);
+            if (!item) return;
+            const updatedItem = { ...item, quantity };
+            await axios.put(`${API_URL}/cart/${productId}`, updatedItem);
+            setCart(cart.map(i => i.id === productId ? updatedItem : i));
+        } catch (error) {
+            console.error("Error updating cart quantity:", error);
+        }
     };
 
-    const clearCart = () => setCart([]);
+    const clearCart = async () => {
+        try {
+            await Promise.all(cart.map(item => axios.delete(`${API_URL}/cart/${item.id}`)));
+            setCart([]);
+        } catch (error) {
+            console.error("Error clearing cart:", error);
+        }
+    };
 
     const getCartTotal = () => {
         return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
@@ -83,6 +166,7 @@ export const AgroProvider = ({ children }) => {
             products,
             cart,
             login,
+            registerOrLogin,
             logout,
             updateUser,
             addProduct,

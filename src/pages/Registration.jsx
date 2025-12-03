@@ -7,7 +7,7 @@ import Footer from '../components/Footer';
 const Registration = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { login } = useAgro();
+    const { registerOrLogin } = useAgro();
 
     const searchParams = new URLSearchParams(location.search);
     const userType = searchParams.get('type') || 'customer';
@@ -28,12 +28,14 @@ const Registration = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        const newUser = {
+        const userData = {
             ...formData,
-            type: userType,
-            id: Date.now()
+            type: userType
+            // id is now handled in registerOrLogin
         };
-        login(newUser);
+
+        registerOrLogin(userData);
+
         if (userType === 'farmer') {
             navigate('/farmer-dashboard');
         } else {
